@@ -1,0 +1,155 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+from matplotlib.colors import LinearSegmentedColormap
+
+# Set style for better aesthetics
+plt.style.use('seaborn-v0_8-darkgrid')
+fig = plt.figure(figsize=(15, 12))
+fig.patch.set_facecolor('#f8f9fa')
+
+# Time in hours
+t = np.linspace(0, 24, 1000)
+
+# 1. Information rate I(t)
+I_t = 3 + 2 * np.sin(2 * np.pi * t / 24 - np.pi / 2)
+# Add focus peaks at t=10 and t=15
+I_t += 1.5 * np.exp(-((t - 10) ** 2) / 1) + 1.5 * np.exp(-((t - 15) ** 2) / 1)
+# Add some random noise to simulate mental fluctuations
+np.random.seed(42)
+I_t += 0.3 * np.random.randn(len(t))
+
+# 2. Integrated information Phi(t)
+Phi_t = np.ones_like(t)  # baseline 1
+# Sleep period 2-5h (deep sleep)
+Phi_t[(t >= 2) & (t < 5)] = 0.2
+# REM sleep 5-7h (dreaming)
+Phi_t[(t >= 5) & (t < 7)] = 0.8
+# Focus peaks (work and meditation)
+Phi_t += 0.5 * np.exp(-((t - 10) ** 2) / 0.5) + 0.5 * np.exp(-((t - 15) ** 2) / 0.5)
+# Smooth transitions
+from scipy.ndimage import gaussian_filter1d
+Phi_t = gaussian_filter1d(Phi_t, sigma=10)
+
+# 3. Mutual information MI(t) - alignment internal/external
+MI_t = 0.9 - 0.5 * ((t >= 2) & (t < 7)).astype(float)  # lower in sleep
+MI_t += 0.1 * (np.exp(-((t - 10) ** 2) / 0.5) + np.exp(-((t - 15) ** 2) / 0.5))
+# Daytime variations
+MI_t += 0.2 * np.sin(2 * np.pi * t / 24 * 4) * (t > 7) * (t < 22)
+MI_t = np.clip(MI_t, 0, 1)
+
+# 4. Free will W(t)
+W_t = 0.7 * np.ones_like(t)
+W_t[(t >= 2) & (t < 7)] = 0.1  # low in sleep
+W_t += 0.2 * (np.exp(-((t - 10) ** 2) / 0.5) + np.exp(-((t - 15) ** 2) / 0.5))
+# Add some random volitional fluctuations
+W_t += 0.1 * np.sin(2 * np.pi * t / 24 * 6) * (t > 7)
+W_t = np.clip(W_t, 0, 1)
+
+# 5. Compute E_R(t) and R(t)
+E_R_t = np.sqrt(1 + I_t ** 2)
+R_t = E_R_t * W_t * Phi_t * MI_t
+# Normalize R_t for easier viewing (0 to 1 scale)
+R_t = (R_t - np.min(R_t)) / (np.max(R_t) - np.min(R_t) + 1e-10)
+
+# Create subplots with shared x-axis
+gs = fig.add_gridspec(7, 2, hspace=0.4, wspace=0.3, height_ratios=[1, 1, 1, 1, 1, 1.5, 0.5])
+
+# Define a color palette
+colors = {
+    'I(t)': '#1f77b4',      # Blue
+    'Phi(t)': '#2ca02c',    # Green
+    'MI(t)': '#ff7f0e',     # Orange
+    'W(t)': '#d62728',      # Red
+    'E_R(t)': '#9467bd',    # Purple
+    'R(t)': '#000000'       # Black
+}
+
+# Plot each component
+axes = []
+components = [
+    ('I(t)', 'Information Rate\n[bits/s]', I_t, colors['I(t)']),
+    ('Φ(t)', 'Integrated Information\n[bits]', Phi_t, colors['Phi(t)']),
+    ('MI(I,C)', 'Internal-External Alignment\n[bits]', MI_t, colors['MI(t)']),
+    ('W(t)', 'Free Will Parameter\n[0-1]', W_t, colors['W(t)']),
+    ('E_R(t)', 'Energy of Reality\n[dimensionless]', E_R_t, colors['E_R(t)'])
+]
+
+for i, (title, ylabel, data, color) in enumerate(components):
+    ax = fig.add_subplot(gs[i, :])
+    axes.append(ax)
+    ax.plot(t, data, color=color, linewidth=2.5, alpha=0.8)
+    ax.fill_between(t, 0, data, color=color, alpha=0.15)
+    ax.set_ylabel(ylabel, fontsize=11, fontweight='bold')
+    ax.set_title(f'{title}', fontsize=13, fontweight='bold', pad=10)
+    ax.grid(True, alpha=0.4)
+    
+    # Add mental state background colors
+    ax.axvspan(2, 5, alpha=0.1, color='navy', label='Deep Sleep' if i==0 else "")
+    ax.axvspan(5, 7, alpha=0.1, color='purple', label='REM Sleep' if i==0 else "")
+    ax.axvspan(10, 10.5, alpha=0.1, color='green', label='Focus Work' if i==0 else "")
+    ax.axvspan(15, 15.5, alpha=0.1, color='darkgreen', label='Meditation' if i==0 else "")
+    
+    if i == 0:
+        ax.legend(loc='upper right', fontsize=9, framealpha=0.9)
+
+# Plot R(t) in a bigger subplot
+ax_R = fig.add_subplot(gs[5, :])
+axes.append(ax_R)
+
+# Create gradient fill for R(t)
+cmap = LinearSegmentedColormap.from_list('reality_cmap', ['#e0e0e0', '#4a4a4a', '#000000'])
+norm = plt.Normalize(R_t.min(), R_t.max())
+colors_R = cmap(norm(R_t))
+
+ax_R.plot(t, R_t, color='black', linewidth=3, alpha=0.9, label='R(t)')
+ax_R.fill_between(t, 0, R_t, color='black', alpha=0.15)
+
+# Add colored background for mental states with labels
+ax_R.axvspan(2, 5, alpha=0.15, color='navy', label='Deep Sleep')
+ax_R.axvspan(5, 7, alpha=0.15, color='purple', label='REM Sleep')
+ax_R.axvspan(10, 10.5, alpha=0.15, color='green', label='Focused Work')
+ax_R.axvspan(15, 15.5, alpha=0.15, color='darkgreen', label='Meditation')
+
+ax_R.set_ylabel('Reality Richness R(t)\n[normalized 0-1]', fontsize=12, fontweight='bold')
+ax_R.set_title('Manifested Reality Over 24 Hours', fontsize=15, fontweight='bold', pad=15)
+ax_R.grid(True, alpha=0.4)
+ax_R.legend(loc='upper right', fontsize=10, framealpha=0.9)
+ax_R.set_xlabel('Time (hours)', fontsize=12, fontweight='bold')
+
+# Add horizontal line for baseline
+ax_R.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5, linewidth=1)
+
+# Add correlation heatmap in the last row
+ax_corr = fig.add_subplot(gs[6, :])
+corr_data = np.vstack([I_t, Phi_t, MI_t, W_t, E_R_t, R_t])
+corr_matrix = np.corrcoef(corr_data)
+
+# Create custom labels
+labels = ['I(t)', 'Φ(t)', 'MI(I,C)', 'W(t)', 'E_R(t)', 'R(t)']
+im = ax_corr.imshow(corr_matrix, cmap='coolwarm', vmin=-1, vmax=1, aspect='auto')
+ax_corr.set_xticks(range(len(labels)))
+ax_corr.set_yticks(range(len(labels)))
+ax_corr.set_xticklabels(labels, rotation=45, fontsize=9)
+ax_corr.set_yticklabels(labels, fontsize=9)
+
+# Add correlation values
+for i in range(len(labels)):
+    for j in range(len(labels)):
+        text = ax_corr.text(j, i, f'{corr_matrix[i, j]:.2f}',
+                          ha="center", va="center", 
+                          color="white" if abs(corr_matrix[i, j]) > 0.5 else "black",
+                          fontsize=8, fontweight='bold')
+
+ax_corr.set_title('Correlation Matrix Between Components', fontsize=11, fontweight='bold', pad=10)
+
+# Add colorbar for correlation matrix
+cbar = plt.colorbar(im, ax=ax_corr, orientation='horizontal', pad=0.1, shrink=0.8)
+cbar.set_label('Correlation Coefficient', fontsize=9)
+
+# Add overall title
+fig.suptitle('Toy Simulation: Reality as Function of Matter, Information, and Consciousness', 
+             fontsize=16, fontweight='bold', y=1.02)
+
+plt.tight_layout()
+plt.show()
